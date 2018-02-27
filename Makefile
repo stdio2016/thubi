@@ -1,9 +1,9 @@
-OBJS = $(objdir)/main.o
+OBJS = $(obj)/main.o $(obj)/trie.o
 
-bindir = bin
-objdir = obj
-srcdir = src
-EXE = $(bindir)/thubi
+bin = bin
+obj = obj
+src = src
+EXE = $(bin)/thubi
 
 LIBS =
 
@@ -14,10 +14,12 @@ all: $(EXE)
 $(EXE): $(OBJS)
 	$(CC) -o $@ $+ $(LIBS)
 
-$(objdir)/main.o: $(srcdir)/main.c
+$(obj)/main.o: $(src)/main.c $(src)/trie.h
+	$(COMPILE)
+$(obj)/trie.o: $(src)/trie.c $(src)/trie.h
 	$(COMPILE)
 
 clean:
-	-rm -f $(EXE) $(objdir)/*.o
+	-rm -f $(EXE) $(obj)/*.o
 
 .PHONY: clean
