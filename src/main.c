@@ -7,6 +7,9 @@
 
 unsigned char *LineBuf;
 size_t LineBufSize = 0, LineBufCap = 6;
+struct Trie *Symbols;
+int SymbolCounter = 256 + 2;
+struct Trie *AcTrie;
 
 int getLine(FILE *f) {
   int ch = fgetc(f);
@@ -36,6 +39,48 @@ int getLine(FILE *f) {
   return 1;
 }
 
+int defineSymbol(char *sym, int len, int id) {
+  struct Trie *t = Symbols;
+  int i;
+  bool err = false;
+  for (i = 0; i < len; i++) {
+    if (t->payload.n & 1) { // prefix is another symbol
+      fprintf(stderr, "symbol \"\\%s\" is not prefix-free\n", sym);
+      err = true;
+      break;
+    }
+    t->payload.n += 2;
+    t = Trie_advanceAdd(t, sym[i]);
+  }
+  if (!err) {
+    if (t->payload.n == 0) { // user defined symbol
+      printf("symbol %s is %d\n", sym, id);
+      t->payload.n = id<<1 | 1;
+    }
+    else {
+      if (t->payload.n & 1) { // delete symbol
+        t->payload.n = 0;
+        for (i = 0; i < len; i++) {
+          t = t->parent;
+          t->payload.n -= 4;
+        }
+        return -1;
+      }
+      else { // existing symbol
+        fprintf(stderr, "symbol \"\\%s\" is not prefix-free\n", sym);
+        err = true;
+      }
+    }
+  }
+  if (err) {
+    for (i = i; i > 0; i--) {
+      t = t->parent;
+      t->payload.n -= 2;
+    }
+  }
+  return !err;
+}
+
 void parseFile(FILE *f) {
   LineBuf = calloc(LineBufCap, 1);
   if (LineBuf == NULL) OutOfMemory();
@@ -51,10 +96,12 @@ void parseFile(FILE *f) {
         state = 1;
       }
       else if (LineBuf[0] == '\\') {
-        printf("define %s\n", LineBuf);
+        if (defineSymbol(LineBuf + 1, LineBufSize - 1, SymbolCounter) == 1) {
+          SymbolCounter++;
+        }
       }
       else if (LineBuf[0] == '#') {
-        printf("comment %s\n", LineBuf);
+        // skip comment
       }
       else {
         fprintf(stderr, "unknown lhs production \"%s\"\n", LineBuf);
@@ -70,7 +117,7 @@ void parseFile(FILE *f) {
         state = 0;
       }
       else if (LineBuf[0] == '#') {
-        printf("comment %s\n", LineBuf);
+        // skip comment
       }
       else if (strcmp(LineBuf, ":::") == 0) {
         printf("input\n");
@@ -94,6 +141,10 @@ int main(void)
   if (f == NULL) {
     return 1;
   }
+  Symbols = Trie_create();
+  if (Symbols == NULL) OutOfMemory();
+  AcTrie = Trie_create();
+  if (AcTrie == NULL) OutOfMemory();
   parseFile(f);
   fclose(f);
   return 0;
