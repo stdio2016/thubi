@@ -1,14 +1,18 @@
+#include <ctype.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "trie.h"
 #define OutOfMemory()  do { fprintf(stderr, "out of memory\n"); exit(1); } while (0)
+#define MAX_BUILTIN_SYMBOL  258
+#define SYMBOL_B 256
+#define SYMBOL_S 257
 
 unsigned char *LineBuf;
 size_t LineBufSize = 0, LineBufCap = 6;
 struct Trie *Symbols;
-int SymbolCounter = 256 + 2;
+int SymbolCounter = MAX_BUILTIN_SYMBOL;
 struct Trie *AcTrie;
 
 int getLine(FILE *f) {
@@ -39,11 +43,16 @@ int getLine(FILE *f) {
   return 1;
 }
 
-int defineSymbol(char *sym, int len, int id) {
+int defineSymbol(const char *sym, int len, int id) {
   struct Trie *t = Symbols;
   int i;
   bool err = false;
   for (i = 0; i < len; i++) {
+    if (!isprint(sym[i])) {
+      fprintf(stderr, "symbol contains invalid character\n");
+      err = true;
+      break;
+    }
     if (t->payload.n & 1) { // prefix is another symbol
       fprintf(stderr, "symbol \"\\%s\" is not prefix-free\n", sym);
       err = true;
@@ -53,8 +62,11 @@ int defineSymbol(char *sym, int len, int id) {
     t = Trie_advanceAdd(t, sym[i]);
   }
   if (!err) {
-    if (t->payload.n == 0) { // user defined symbol
-      printf("symbol %s is %d\n", sym, id);
+    if (t->payload.n & 1 && t->payload.n < MAX_BUILTIN_SYMBOL * 2) { // builtin symbol
+      err = true;
+      printf("builtin symbol \\%s cannot be unidentified\n", sym);
+    }
+    else if (t->payload.n == 0) { // user defined symbol
       t->payload.n = id<<1 | 1;
     }
     else {
@@ -66,7 +78,7 @@ int defineSymbol(char *sym, int len, int id) {
         }
         return -1;
       }
-      else { // existing symbol
+      else { // is prefix of some symbol
         fprintf(stderr, "symbol \"\\%s\" is not prefix-free\n", sym);
         err = true;
       }
@@ -79,6 +91,34 @@ int defineSymbol(char *sym, int len, int id) {
     }
   }
   return !err;
+}
+
+void addBuiltinSymbols(void) {
+  char symName[] = "\\nrtfave";
+  char escaped[] = "\\\n\r\t\f\a\v\x1B";
+  int i;
+  for (i = 0; i < 8; i++) {
+    defineSymbol(&symName[i], 1, escaped[i]);
+  }
+  defineSymbol("b", 1, SYMBOL_B);
+  defineSymbol("s", 1, SYMBOL_S);
+  char s[5];
+  for (i = 0; i < 256; i++) {
+    sprintf(s, "%.3o", i);
+    defineSymbol(s, 3, i);
+  }
+  char hex[22] = "0123456789abcdefABCDEF";
+  s[0] = 'x';
+  for (i = 0; i < 22; i++) {
+    int j, ih;
+    s[1] = hex[i];
+    ih = i >= 16 ? i-6 : i;
+    for (j = 0; j < 22; j++) {
+      s[2] = hex[j];
+      int jh = j >= 16 ? j-6 : j;
+      defineSymbol(s, 3, ih * 16 + jh);
+    }
+  }
 }
 
 void parseFile(FILE *f) {
@@ -145,6 +185,7 @@ int main(void)
   if (Symbols == NULL) OutOfMemory();
   AcTrie = Trie_create();
   if (AcTrie == NULL) OutOfMemory();
+  addBuiltinSymbols();
   parseFile(f);
   fclose(f);
   return 0;
