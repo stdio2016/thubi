@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "trie.h"
+#include "StringBuffer.h"
 #define OutOfMemory()  do { fprintf(stderr, "out of memory\n"); exit(1); } while (0)
 #define MAX_BUILTIN_SYMBOL  258
 #define SYMBOL_B 256
@@ -11,6 +12,7 @@
 
 unsigned char *LineBuf;
 size_t LineBufSize = 0, LineBufCap = 6;
+struct StringBuffer RuleBuf;
 struct Trie *Symbols;
 int SymbolCounter = MAX_BUILTIN_SYMBOL;
 struct Trie *AcTrie;
@@ -121,9 +123,78 @@ void addBuiltinSymbols(void) {
   }
 }
 
+int parseLineEscape() {
+  StrBuf_clear(&RuleBuf);
+  size_t i, symbolStart;
+  struct Trie *a = NULL;
+  for (i = 1; i < LineBufSize; i++) {
+    unsigned ch;
+    if (a == NULL) {
+      ch = LineBuf[i];
+      if (ch == '\\') {
+        symbolStart = i;
+        a = Symbols;
+      }
+      else {
+        if (ch >= 0x80) {
+          StrBuf_appendChar(&RuleBuf, 0xc0 | ch>>6);
+          StrBuf_appendChar(&RuleBuf, 0x80 | ch & 0x3f);
+        }
+        else {
+          StrBuf_appendChar(&RuleBuf, ch);
+        }
+      }
+    }
+    else {
+      a = Trie_advance(a, LineBuf[i]);
+      if (a == NULL || a->payload.n == 0) {
+        fprintf(stderr, "unknown symbol \"");
+        size_t j;
+        for (j = symbolStart; j <= i; j++) {
+          fputc(LineBuf[j], stderr);
+        }
+        fprintf(stderr, "\"\n");
+        return 0;
+      }
+      ch = a->payload.n;
+      if (ch & 1) {
+        ch >>= 1;
+        if (ch >= 0x80) {
+          int y = 2, i;
+          char ut[7];
+          while (y < 6 && ch > 2<<(y*5)-1) {
+            y++; 
+          }
+          ut[0] = (0xff ^ 0xff>>y) | ch >> (y*6-6);
+          for (i = 1; i < y; i++) {
+            ut[i] = 0x80 | (ch >> ((y-i-1)*6) & 0x3f);
+          }
+          ut[y] = '\0';
+          StrBuf_append(&RuleBuf, ut);
+        }
+        else {
+          StrBuf_appendChar(&RuleBuf, ch);
+        }
+        a = NULL;
+      }
+    }
+  }
+  if (a != NULL) {
+    fprintf(stderr, "unknown symbol \"");
+    size_t j;
+    for (j = symbolStart; j <= i; j++) {
+      fputc(LineBuf[j], stderr);
+    }
+    fprintf(stderr, "\"\n");
+    return 0;
+  }
+  return 1;
+}
+
 void parseFile(FILE *f) {
   LineBuf = calloc(LineBufCap, 1);
   if (LineBuf == NULL) OutOfMemory();
+  StrBuf_init(&RuleBuf);
   int ended, state = 0;
   do {
     ended = getLine(f);
@@ -133,6 +204,7 @@ void parseFile(FILE *f) {
       }
       else if (LineBuf[0] == ':') {
         printf("from %s\n", LineBuf+1);
+        parseLineEscape();
         state = 1;
       }
       else if (LineBuf[0] == '\\') {
@@ -150,10 +222,12 @@ void parseFile(FILE *f) {
     else if (state == 1) {
       if (LineBuf[0] == '=') {
         printf("to %s\n", LineBuf+1);
+        parseLineEscape();
         state = 0;
       }
       else if (LineBuf[0] == '~') {
         printf("print %s\n", LineBuf+1);
+        parseLineEscape();
         state = 0;
       }
       else if (LineBuf[0] == '#') {
@@ -173,6 +247,7 @@ void parseFile(FILE *f) {
     }
   } while (ended != EOF) ;
   free(LineBuf);
+  StrBuf_destroy(&RuleBuf);
 }
 
 int main(void)
