@@ -36,7 +36,7 @@ struct Trie *Symbols;
 int SymbolCounter = MAX_BUILTIN_SYMBOL;
 struct Trie *AcTrie;
 int AcStateCount = 0;
-struct Trie *AcStates;
+struct Trie **AcStates;
 
 int getLine(FILE *f) {
   int ch = fgetc(f);
@@ -144,10 +144,10 @@ void addBuiltinSymbols(void) {
   }
 }
 
-int parseLineEscape() {
+int parseLineEscape(int start) {
   size_t i, symbolStart;
   struct Trie *a = NULL;
-  for (i = 1; i < LineBufSize; i++) {
+  for (i = start; i < LineBufSize; i++) {
     unsigned ch;
     if (a == NULL) {
       ch = (unsigned char) LineBuf[i];
@@ -260,7 +260,7 @@ void parseFile(FILE *f) {
       }
       else if (LineBuf[0] == ':') {
         printf("from %s\n", LineBuf+1);
-        parseLineEscape();
+        parseLineEscape(1);
         lhs = addRuleLhs(RuleBuf.buf, RuleBuf.size);
         state = 1;
       }
@@ -280,13 +280,13 @@ void parseFile(FILE *f) {
       StrBuf_clear(&RuleBuf);
       if (LineBuf[0] == '=') {
         printf("to %s\n", LineBuf+1);
-        parseLineEscape();
+        parseLineEscape(1);
         addRuleRhs(lhs, RuleBuf.buf, RuleBuf.size, ReplaceRule);
         state = 0;
       }
       else if (LineBuf[0] == '~') {
         printf("print %s\n", LineBuf+1);
-        parseLineEscape();
+        parseLineEscape(1);
         addRuleRhs(lhs, RuleBuf.buf, RuleBuf.size, PrintRule);
         state = 0;
       }
@@ -305,10 +305,47 @@ void parseFile(FILE *f) {
     }
     else if (state == 2 && (ended != EOF || LineBufSize > 0)) {
       printf("init str %s\n", LineBuf);
+      parseLineEscape(0);
     }
   } while (ended != EOF) ;
   free(LineBuf);
   StrBuf_destroy(&RuleBuf);
+}
+
+void buildAcAutomata() {
+  AcStates = malloc(sizeof(struct Trie *) * AcStateCount);
+  int i, qend = 1;
+  const int n = AcStateCount;
+  AcStates[0] = AcTrie;
+  for (i = 0; i < n; i++) {
+    struct Trie *me = AcStates[i];
+    struct AcTriePayload *myac = me->payload.v;
+    int hi, lo;
+    for (hi = 0; hi < 16; hi++) {
+      struct Trie *u = me->branch[hi];
+      if (u != NULL) {
+        for (lo = 0; lo < 16; lo++) {
+          struct Trie *child = u->branch[lo];
+          if (child != NULL) {
+            struct AcTriePayload *chac = child->payload.v;
+            AcStates[qend] = child;
+            chac->id = qend;
+            if (i == 0) {
+              chac->fail = AcTrie;
+            }
+            else {
+              chac->fail = Trie_advance(myac->fail, hi<<4 | lo);
+              if (chac->fail == NULL) chac->fail = AcTrie;
+            }
+            struct AcTriePayload *r = chac->fail->payload.v;
+            if (r->rules != NULL) chac->dict = chac->fail;
+            else chac->dict = r->dict;
+            qend++;
+          }
+        }
+      }
+    }
+  }
 }
 
 int main(void)
@@ -324,9 +361,12 @@ int main(void)
   struct AcTriePayload *a = calloc(sizeof(struct AcTriePayload), 1);
   if (a == NULL) OutOfMemory();
   AcTrie->payload.v = a;
+  a->fail = AcTrie;
+  a->dict = NULL;
   AcStateCount++;
   addBuiltinSymbols();
   parseFile(f);
   fclose(f);
+  buildAcAutomata();
   return 0;
 }
