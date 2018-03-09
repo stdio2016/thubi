@@ -10,29 +10,26 @@ struct Trie *Trie_advance(struct Trie *n, const int ch) {
   if (n == NULL) return NULL;
   int hi = ch >> 4 & 0xf;
   int lo = ch & 0xf;
-  n = n->branch[hi];
-  if (n == NULL) return NULL;
-  n = n->branch[lo];
-  return n;
+  struct Trie_internal *n2 = n->branch[hi];
+  if (n2 == NULL) return NULL;
+  return n2->branch[lo];
 }
 
 struct Trie *Trie_advanceAdd(struct Trie *n, const int ch) {
-  struct Trie *t;
+  struct Trie_internal *t;
   if (n == NULL) return NULL;
   int hi = ch >> 4 & 0xf;
   int lo = ch & 0xf;
   t = n->branch[hi];
   if (t == NULL) {
-    t = Trie_create();
-    t->parent = n;
+    t = calloc(1, sizeof(struct Trie_internal));
     n->branch[hi] = t;
   }
-  n = t;
-  t = n->branch[lo];
-  if (t == NULL) {
-    t = Trie_create();
-    t->parent = n;
-    n->branch[lo] = t;
+  struct Trie *n2 = t->branch[lo];
+  if (n2 == NULL) {
+    n2 = Trie_create();
+    n2->parent = n;
+    t->branch[lo] = n2;
   }
-  return t;
+  return n2;
 }

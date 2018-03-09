@@ -22,13 +22,6 @@ struct ThubiRule {
   struct ThubiRule *next;
 };
 
-struct AcTriePayload {
-  int id;
-  struct ThubiRule *rules;
-  struct Trie *fail;
-  struct Trie *dict;
-};
-
 char *LineBuf;
 size_t LineBufSize = 0, LineBufCap = 6;
 struct StringBuffer RuleBuf;
@@ -76,28 +69,28 @@ int defineSymbol(const char *sym, int len, int id) {
       err = true;
       break;
     }
-    if (t->payload.n & 1) { // prefix is another symbol
+    if (t->id & 1) { // prefix is another symbol
       fprintf(stderr, "symbol \"\\%s\" is not prefix-free\n", sym);
       err = true;
       break;
     }
-    t->payload.n += 2;
+    t->id += 2;
     t = Trie_advanceAdd(t, sym[i]);
   }
   if (!err) {
-    if (t->payload.n & 1 && t->payload.n < MAX_BUILTIN_SYMBOL * 2) { // builtin symbol
+    if (t->id & 1 && t->id < MAX_BUILTIN_SYMBOL * 2) { // builtin symbol
       err = true;
       printf("builtin symbol \\%s cannot be unidentified\n", sym);
     }
-    else if (t->payload.n == 0) { // user defined symbol
-      t->payload.n = id<<1 | 1;
+    else if (t->id == 0) { // user defined symbol
+      t->id = id<<1 | 1;
     }
     else {
-      if (t->payload.n & 1) { // delete symbol
-        t->payload.n = 0;
+      if (t->id & 1) { // delete symbol
+        t->id = 0;
         for (i = 0; i < len; i++) {
           t = t->parent;
-          t->payload.n -= 4;
+          t->id -= 4;
         }
         return -1;
       }
@@ -110,7 +103,7 @@ int defineSymbol(const char *sym, int len, int id) {
   if (err) {
     for (i = i; i > 0; i--) {
       t = t->parent;
-      t->payload.n -= 2;
+      t->id -= 2;
     }
   }
   return !err;
@@ -167,7 +160,7 @@ int parseLineEscape(int start) {
     }
     else {
       a = Trie_advance(a, LineBuf[i]);
-      if (a == NULL || a->payload.n == 0) {
+      if (a == NULL || a->id == 0) {
         fprintf(stderr, "unknown symbol \"");
         size_t j;
         for (j = symbolStart; j <= i; j++) {
@@ -176,7 +169,7 @@ int parseLineEscape(int start) {
         fprintf(stderr, "\"\n");
         return 0;
       }
-      ch = a->payload.n;
+      ch = a->id;
       if (ch & 1) {
         ch >>= 1;
         if (ch >= 0x80) {
@@ -216,10 +209,8 @@ struct Trie *addRuleLhs(const char *str, size_t len) {
   struct Trie *a = AcTrie;
   for (i = 0; i < len; i++) {
     a = Trie_advanceAdd(a, str[i]);
-    if (a->payload.v == NULL) {
-      struct AcTriePayload *p = calloc(sizeof(struct AcTriePayload), 1);
-      a->payload.v = p;
-      AcStateCount++;
+    if (a->id == 0) {
+      a->id = AcStateCount++;
     }
   }
   return a;
@@ -240,9 +231,9 @@ void addRuleRhs(struct Trie *lhs, const char *str, size_t len, int mode) {
   }
   r->rhslen = len;
   r->mode = mode;
-  struct AcTriePayload *ac = lhs->payload.v;
-  r->next = ac->rules;
-  ac->rules = r;
+  struct ThubiRule *ac = lhs->payload;
+  r->next = ac;
+  lhs->payload = r;
 }
 
 void parseFile(FILE *f) {
@@ -313,33 +304,35 @@ void parseFile(FILE *f) {
 }
 
 void buildAcAutomata() {
+  // Trie->parent becomes fail pointer
   AcStates = malloc(sizeof(struct Trie *) * AcStateCount);
   int i, qend = 1;
   const int n = AcStateCount;
   AcStates[0] = AcTrie;
   for (i = 0; i < n; i++) {
     struct Trie *me = AcStates[i];
-    struct AcTriePayload *myac = me->payload.v;
     int hi, lo;
     for (hi = 0; hi < 16; hi++) {
-      struct Trie *u = me->branch[hi];
+      struct Trie_internal *u = me->branch[hi];
       if (u != NULL) {
         for (lo = 0; lo < 16; lo++) {
           struct Trie *child = u->branch[lo];
+          int ch = hi<<4 | lo;
           if (child != NULL) {
-            struct AcTriePayload *chac = child->payload.v;
+            struct Trie *find, *fail = NULL;
             AcStates[qend] = child;
-            chac->id = qend;
-            if (i == 0) {
-              chac->fail = AcTrie;
+            child->id = qend;
+            find = me->parent;
+            while (find != NULL) {
+              fail = Trie_advance(find, ch);
+              if (fail != NULL) break;
+              find = find->parent;
             }
-            else {
-              chac->fail = Trie_advance(myac->fail, hi<<4 | lo);
-              if (chac->fail == NULL) chac->fail = AcTrie;
-            }
-            struct AcTriePayload *r = chac->fail->payload.v;
-            if (r->rules != NULL) chac->dict = chac->fail;
-            else chac->dict = r->dict;
+            if (fail == NULL) fail = AcTrie;
+            child->parent = fail;
+            struct ThubiRule *r = fail->payload;
+            if (r != NULL) child->dict = fail;
+            else child->dict = fail->dict;
             qend++;
           }
         }
@@ -358,11 +351,6 @@ int main(void)
   if (Symbols == NULL) OutOfMemory();
   AcTrie = Trie_create();
   if (AcTrie == NULL) OutOfMemory();
-  struct AcTriePayload *a = calloc(sizeof(struct AcTriePayload), 1);
-  if (a == NULL) OutOfMemory();
-  AcTrie->payload.v = a;
-  a->fail = AcTrie;
-  a->dict = NULL;
   AcStateCount++;
   addBuiltinSymbols();
   parseFile(f);
