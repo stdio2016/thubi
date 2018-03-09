@@ -341,6 +341,25 @@ void buildAcAutomata() {
   }
 }
 
+void showTrie(struct Trie *t, int indent) {
+  int hi, lo;
+  for (hi = 0; hi < 16; hi++) {
+    struct Trie_internal *ti = t->branch[hi];
+    if (ti == NULL) continue;
+    for (lo = 0; lo < 16; lo++) {
+      struct Trie *t2 = ti->branch[lo];
+      if (t2 == NULL) continue;
+      printf("%*s", indent*2, "");
+      printf("#%d '%c'", t2->id, hi<<4|lo);
+      if (t2->parent != NULL) printf(" parent %d", t2->parent->id);
+      if (t2->dict != NULL) printf(" dict %d", t2->dict->id);
+      if (t2->payload != NULL) printf(" match");
+      puts("");
+      showTrie(t2, indent+1);
+    }
+  }
+}
+
 int main(void)
 {
   FILE *f = stdin;
@@ -356,5 +375,6 @@ int main(void)
   parseFile(f);
   fclose(f);
   buildAcAutomata();
+  showTrie(AcTrie, 0);
   return 0;
 }
