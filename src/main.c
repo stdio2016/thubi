@@ -10,12 +10,33 @@
 #define SYMBOL_B 256
 #define SYMBOL_S 257
 
-unsigned char *LineBuf;
+enum ThubiRuleMode {
+  ReplaceRule, PrintRule, InputRule
+};
+
+struct ThubiRule {
+  size_t lhslen;
+  char *rhs;
+  size_t rhslen;
+  enum ThubiRuleMode mode;
+  struct ThubiRule *next;
+};
+
+struct AcTriePayload {
+  int id;
+  struct ThubiRule *rules;
+  struct Trie *fail;
+  struct Trie *dict;
+};
+
+char *LineBuf;
 size_t LineBufSize = 0, LineBufCap = 6;
 struct StringBuffer RuleBuf;
 struct Trie *Symbols;
 int SymbolCounter = MAX_BUILTIN_SYMBOL;
 struct Trie *AcTrie;
+int AcStateCount = 0;
+struct Trie *AcStates;
 
 int getLine(FILE *f) {
   int ch = fgetc(f);
@@ -124,21 +145,20 @@ void addBuiltinSymbols(void) {
 }
 
 int parseLineEscape() {
-  StrBuf_clear(&RuleBuf);
   size_t i, symbolStart;
   struct Trie *a = NULL;
   for (i = 1; i < LineBufSize; i++) {
     unsigned ch;
     if (a == NULL) {
-      ch = LineBuf[i];
+      ch = (unsigned char) LineBuf[i];
       if (ch == '\\') {
         symbolStart = i;
         a = Symbols;
       }
       else {
         if (ch >= 0x80) {
-          StrBuf_appendChar(&RuleBuf, 0xc0 | ch>>6);
-          StrBuf_appendChar(&RuleBuf, 0x80 | ch & 0x3f);
+          StrBuf_appendChar(&RuleBuf, 0xc0 | (ch>>6));
+          StrBuf_appendChar(&RuleBuf, 0x80 | (ch & 0x3f));
         }
         else {
           StrBuf_appendChar(&RuleBuf, ch);
@@ -162,7 +182,7 @@ int parseLineEscape() {
         if (ch >= 0x80) {
           int y = 2, i;
           char ut[7];
-          while (y < 6 && ch > 2<<(y*5)-1) {
+          while (y < 6 && ch > 2<<((y*5)-1)) {
             y++; 
           }
           ut[0] = (0xff ^ 0xff>>y) | ch >> (y*6-6);
@@ -191,20 +211,57 @@ int parseLineEscape() {
   return 1;
 }
 
+struct Trie *addRuleLhs(const char *str, size_t len) {
+  size_t i;
+  struct Trie *a = AcTrie;
+  for (i = 0; i < len; i++) {
+    a = Trie_advanceAdd(a, str[i]);
+    if (a->payload.v == NULL) {
+      struct AcTriePayload *p = calloc(sizeof(struct AcTriePayload), 1);
+      a->payload.v = p;
+      AcStateCount++;
+    }
+  }
+  return a;
+}
+
+void addRuleRhs(struct Trie *lhs, const char *str, size_t len, int mode) {
+  struct ThubiRule *r = malloc(sizeof(struct ThubiRule));
+  if (r == NULL) OutOfMemory();
+  r->lhslen = lhs->depth;
+  if (str == NULL) {
+    r->rhs = NULL;
+  }
+  else {
+    r->rhs = malloc(len+1);
+    if (r->rhs == NULL) OutOfMemory();
+    memcpy(r->rhs, str, len);
+    r->rhs[len] = '\0';
+  }
+  r->rhslen = len;
+  r->mode = mode;
+  struct AcTriePayload *ac = lhs->payload.v;
+  r->next = ac->rules;
+  ac->rules = r;
+}
+
 void parseFile(FILE *f) {
   LineBuf = calloc(LineBufCap, 1);
   if (LineBuf == NULL) OutOfMemory();
   StrBuf_init(&RuleBuf);
+  struct Trie *lhs;
   int ended, state = 0;
   do {
     ended = getLine(f);
     if (state == 0) {
+      StrBuf_clear(&RuleBuf);
       if (LineBufSize == 0) {
         state = 2;
       }
       else if (LineBuf[0] == ':') {
         printf("from %s\n", LineBuf+1);
         parseLineEscape();
+        lhs = addRuleLhs(RuleBuf.buf, RuleBuf.size);
         state = 1;
       }
       else if (LineBuf[0] == '\\') {
@@ -220,14 +277,17 @@ void parseFile(FILE *f) {
       }
     }
     else if (state == 1) {
+      StrBuf_clear(&RuleBuf);
       if (LineBuf[0] == '=') {
         printf("to %s\n", LineBuf+1);
         parseLineEscape();
+        addRuleRhs(lhs, RuleBuf.buf, RuleBuf.size, ReplaceRule);
         state = 0;
       }
       else if (LineBuf[0] == '~') {
         printf("print %s\n", LineBuf+1);
         parseLineEscape();
+        addRuleRhs(lhs, RuleBuf.buf, RuleBuf.size, PrintRule);
         state = 0;
       }
       else if (LineBuf[0] == '#') {
@@ -235,6 +295,7 @@ void parseFile(FILE *f) {
       }
       else if (strcmp(LineBuf, ":::") == 0) {
         printf("input\n");
+        addRuleRhs(lhs, NULL, 0, ReplaceRule);
         state = 0;
       }
       else {
@@ -260,6 +321,10 @@ int main(void)
   if (Symbols == NULL) OutOfMemory();
   AcTrie = Trie_create();
   if (AcTrie == NULL) OutOfMemory();
+  struct AcTriePayload *a = calloc(sizeof(struct AcTriePayload), 1);
+  if (a == NULL) OutOfMemory();
+  AcTrie->payload.v = a;
+  AcStateCount++;
   addBuiltinSymbols();
   parseFile(f);
   fclose(f);
