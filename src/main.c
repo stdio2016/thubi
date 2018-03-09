@@ -239,7 +239,6 @@ void addRuleRhs(struct Trie *lhs, const char *str, size_t len, int mode) {
 void parseFile(FILE *f) {
   LineBuf = calloc(LineBufCap, 1);
   if (LineBuf == NULL) OutOfMemory();
-  StrBuf_init(&RuleBuf);
   struct Trie *lhs;
   int ended, state = 0;
   do {
@@ -248,6 +247,7 @@ void parseFile(FILE *f) {
       StrBuf_clear(&RuleBuf);
       if (LineBufSize == 0) {
         state = 2;
+        StrBuf_append(&RuleBuf, "\xc2\x80"); // \b
       }
       else if (LineBuf[0] == ':') {
         printf("from %s\n", LineBuf+1);
@@ -286,7 +286,7 @@ void parseFile(FILE *f) {
       }
       else if (strcmp(LineBuf, ":::") == 0) {
         printf("input\n");
-        addRuleRhs(lhs, NULL, 0, ReplaceRule);
+        addRuleRhs(lhs, NULL, 0, InputRule);
         state = 0;
       }
       else {
@@ -300,7 +300,11 @@ void parseFile(FILE *f) {
     }
   } while (ended != EOF) ;
   free(LineBuf);
-  StrBuf_destroy(&RuleBuf);
+  if (state != 2) {
+    StrBuf_clear(&RuleBuf);
+    StrBuf_append(&RuleBuf, "\xc2\x80"); // \b
+  }
+  StrBuf_append(&RuleBuf, "\xc2\x81"); // \s
 }
 
 void buildAcAutomata() {
@@ -372,9 +376,11 @@ int main(void)
   if (AcTrie == NULL) OutOfMemory();
   AcStateCount++;
   addBuiltinSymbols();
+  StrBuf_init(&RuleBuf);
   parseFile(f);
   fclose(f);
   buildAcAutomata();
   showTrie(AcTrie, 0);
+  StrBuf_destroy(&RuleBuf);
   return 0;
 }
