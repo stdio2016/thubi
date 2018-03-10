@@ -175,8 +175,8 @@ int parseLineEscape(int start) {
         if (ch >= 0x80) {
           int y = 2, i;
           char ut[7];
-          while (y < 6 && ch > 2<<((y*5)-1)) {
-            y++; 
+          while (y < 6 && ch >= 2<<(y*5)) {
+            y++;
           }
           ut[0] = (0xff ^ 0xff>>y) | ch >> (y*6-6);
           for (i = 1; i < y; i++) {
@@ -381,6 +381,32 @@ int main(void)
   fclose(f);
   buildAcAutomata();
   showTrie(AcTrie, 0);
+  size_t i;
+  struct Trie *state = AcTrie;
+  for (i = 0; i < RuleBuf.size; i++) {
+    char ch = RuleBuf.buf[i];
+    struct Trie *t = Trie_advance(state, ch);
+    while (t == NULL && state != AcTrie) {
+      state = state->parent;
+      if (state == NULL) state = AcTrie;
+      t = Trie_advance(state, ch);
+    }
+    if (t == NULL) t = AcTrie;
+    state = t;
+    while (t != NULL) {
+      if (t->payload) {
+        struct ThubiRule *tr = t->payload;
+        printf("at %ld~%ld =>", i - tr->lhslen + 1, i);
+        size_t j;
+        for (j = 0; j < tr->rhslen; j++) {
+          if (isprint(tr->rhs[j])) printf(" '%c'", tr->rhs[j]);
+          else printf(" %.2x", (unsigned char)tr->rhs[j]);
+        }
+        puts("");
+      }
+      t = t->dict;
+    }
+  }
   StrBuf_destroy(&RuleBuf);
   return 0;
 }
