@@ -49,13 +49,6 @@ int getLine(FILE *f) {
     LineBuf[LineBufSize] = '\0';
   }
   if (ch == EOF) return EOF; // last line
-  if (ch == '\n') {
-    /*ch = fgetc(f);
-    if (ch == EOF) { // last line
-      return EOF;
-    }
-    ungetc(ch, f);*/
-  }
   return 1;
 }
 
@@ -247,10 +240,9 @@ void parseFile(FILE *f) {
       StrBuf_clear(&RuleBuf);
       if (LineBufSize == 0) {
         state = 2;
-        StrBuf_append(&RuleBuf, "\xc2\x80"); // \b
+        StrBuf_append(&RuleBuf, "\xc4\x80"); // \b
       }
       else if (LineBuf[0] == ':') {
-        printf("from %s\n", LineBuf+1);
         parseLineEscape(1);
         lhs = addRuleLhs(RuleBuf.buf, RuleBuf.size);
         state = 1;
@@ -270,13 +262,11 @@ void parseFile(FILE *f) {
     else if (state == 1) {
       StrBuf_clear(&RuleBuf);
       if (LineBuf[0] == '=') {
-        printf("to %s\n", LineBuf+1);
         parseLineEscape(1);
         addRuleRhs(lhs, RuleBuf.buf, RuleBuf.size, ReplaceRule);
         state = 0;
       }
       else if (LineBuf[0] == '~') {
-        printf("print %s\n", LineBuf+1);
         parseLineEscape(1);
         addRuleRhs(lhs, RuleBuf.buf, RuleBuf.size, PrintRule);
         state = 0;
@@ -285,7 +275,6 @@ void parseFile(FILE *f) {
         // skip comment
       }
       else if (strcmp(LineBuf, ":::") == 0) {
-        printf("input\n");
         addRuleRhs(lhs, NULL, 0, InputRule);
         state = 0;
       }
@@ -295,16 +284,15 @@ void parseFile(FILE *f) {
       }
     }
     else if (state == 2 && (ended != EOF || LineBufSize > 0)) {
-      printf("init str %s\n", LineBuf);
       parseLineEscape(0);
     }
   } while (ended != EOF) ;
   free(LineBuf);
   if (state != 2) {
     StrBuf_clear(&RuleBuf);
-    StrBuf_append(&RuleBuf, "\xc2\x80"); // \b
+    StrBuf_append(&RuleBuf, "\xc4\x80"); // \b
   }
-  StrBuf_append(&RuleBuf, "\xc2\x81"); // \s
+  StrBuf_append(&RuleBuf, "\xc4\x81"); // \s
 }
 
 void buildAcAutomata() {
@@ -380,7 +368,6 @@ int main(void)
   parseFile(f);
   fclose(f);
   buildAcAutomata();
-  showTrie(AcTrie, 0);
   size_t i;
   struct Trie *state = AcTrie;
   for (i = 0; i < RuleBuf.size; i++) {
