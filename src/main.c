@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "trie.h"
 #include "StringBuffer.h"
 #define OutOfMemory()  do { fprintf(stderr, "out of memory\n"); exit(1); } while (0)
@@ -352,9 +353,85 @@ void showTrie(struct Trie *t, int indent) {
   }
 }
 
-int main(void)
+struct Match {
+  size_t pos;
+  struct ThubiRule *rule;
+};
+
+void run() {
+  size_t i, matchCap = 5;
+  struct Trie *state = AcTrie;
+  struct Match *matches = malloc(sizeof(struct Match) * matchCap);
+  struct StringBuffer ms;
+  ms.capacity = RuleBuf.capacity;
+  ms.size = RuleBuf.size;
+  ms.buf = calloc(ms.capacity, 1);
+  memcpy(ms.buf, RuleBuf.buf, RuleBuf.size);
+  while (1) {
+    // show string
+    for (i = 0; i < ms.size; i++) {
+      if (isprint(ms.buf[i])) putchar(ms.buf[i]);
+      else printf("\\x%.02x", (unsigned char)ms.buf[i]);
+    }
+    puts("");
+    // find match
+    size_t matchCount = 0;
+    for (i = 0; i < ms.size; i++) {
+      char ch = ms.buf[i];
+      struct Trie *t = Trie_advance(state, ch);
+      while (t == NULL && state != AcTrie) {
+        state = state->parent;
+        if (state == NULL) state = AcTrie;
+        t = Trie_advance(state, ch);
+      }
+      if (t == NULL) t = AcTrie;
+      state = t;
+      while (t != NULL) {
+        struct Trie *td = t;
+        while (td != NULL && td->payload != NULL) {
+          struct ThubiRule *tr = td->payload;
+          while (tr != NULL) {
+            matches[matchCount].pos = i+1;
+            matches[matchCount].rule = tr;
+            matchCount++;
+            if (matchCount >= matchCap) {
+              matchCap *= 2;
+              matches = realloc(matches, sizeof(struct Match) * matchCap);
+            }
+            tr = tr->next;
+          }
+          td = td->dict;
+        }
+        t = t->dict;
+      }
+    }
+    if (matchCount == 0) {
+      break;
+    }
+    // rewrite string
+    size_t r = rand() % matchCount;
+    struct ThubiRule *tr = matches[r].rule;
+    size_t pos = matches[r].pos;
+    if (ms.size + tr->rhslen - tr->lhslen > ms.capacity) {
+      ms.capacity *= 2;
+      ms.buf = realloc(ms.buf, ms.capacity);
+    }
+    if (tr->rhslen != tr->lhslen) {
+      memmove(ms.buf + pos + tr->rhslen - tr->lhslen, ms.buf + pos, ms.size - pos);
+    }
+    memcpy(ms.buf + pos - tr->lhslen, tr->rhs, tr->rhslen);
+    ms.size += tr->rhslen - tr->lhslen;
+  }
+}
+
+int main(int argc, char *argv[])
 {
-  FILE *f = stdin;
+  FILE *f;
+  if (argc < 2) {
+    fprintf(stderr, "usage: %s [thubi program name]\n", argv[0]);
+    return 1;
+  }
+  f = fopen(argv[1], "r");
   if (f == NULL) {
     return 1;
   }
@@ -368,32 +445,8 @@ int main(void)
   parseFile(f);
   fclose(f);
   buildAcAutomata();
-  size_t i;
-  struct Trie *state = AcTrie;
-  for (i = 0; i < RuleBuf.size; i++) {
-    char ch = RuleBuf.buf[i];
-    struct Trie *t = Trie_advance(state, ch);
-    while (t == NULL && state != AcTrie) {
-      state = state->parent;
-      if (state == NULL) state = AcTrie;
-      t = Trie_advance(state, ch);
-    }
-    if (t == NULL) t = AcTrie;
-    state = t;
-    while (t != NULL) {
-      if (t->payload) {
-        struct ThubiRule *tr = t->payload;
-        printf("at %ld~%ld =>", i - tr->lhslen + 1, i);
-        size_t j;
-        for (j = 0; j < tr->rhslen; j++) {
-          if (isprint(tr->rhs[j])) printf(" '%c'", tr->rhs[j]);
-          else printf(" %.2x", (unsigned char)tr->rhs[j]);
-        }
-        puts("");
-      }
-      t = t->dict;
-    }
-  }
+  srand(time(NULL));
+  run();
   StrBuf_destroy(&RuleBuf);
   return 0;
 }
