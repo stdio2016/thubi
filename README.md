@@ -11,7 +11,7 @@ Building
 
 Requirements:
 1. Make
-2. GCC (Clang and Visual C++ are not tested)
+2. GCC (Clang, MinGW and Visual C++ are not tested)
 
 To build Thubi interpretor, just type `make` in your favorite terminal, then you'll see `thubi` executable in `bin` folder.
 
@@ -23,6 +23,7 @@ bin/thubi [Thubi program file]
 Notes
 ---
 1. The document didn't say if digits in hexadecimal escape character (`\xnn`) should be uppercase or lowercase. My implementation accepts both uppercase and lowercase hexadecimal digits.
+
 2. My implementation has some extensions:
     1. output like in Thue
         ```
@@ -39,9 +40,10 @@ Notes
         It will work like `<original string>::=:::` in Thue, except that you can use defined symbols in original string.
 
     3. comments
+
         You can have comments in rule section of program.
 
-        A comment is a line starting with `#`, however, you cannot have comments in initial program state section because they will be treated as normal initial strings. For example:
+        A comment is a line starting with `#`. However, you cannot have comments in initial program state section because they will be treated as normal initial strings. For example:
         ```
         #This Thubi program outputs hello world
         #This is a comment
@@ -54,7 +56,8 @@ Notes
         start
         # because here is initial program state section
         ```
-    4. multi line initial string
+    4. multiline initial string
+
         When there are many lines of initial string, they will be concatenated.
 
         So the above example program has initial string `# however, this is not a commentstart# because here is initial program state section`
