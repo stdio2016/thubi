@@ -50,7 +50,7 @@ Notes
         # This is also a comment
         :start
         # a comment too
-        ~hello world
+        ~hello world\n
         
         # however, this is not a comment
         start
