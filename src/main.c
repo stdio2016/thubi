@@ -358,22 +358,38 @@ struct Match {
   struct ThubiRule *rule;
 };
 
+int getUserInputLine() {
+  int ch = getchar();
+  StrBuf_clear(&RuleBuf);
+  while (ch != EOF && ch != '\n') {
+    if (ch > 0x80) {
+      StrBuf_appendChar(&RuleBuf, 0xc0 | ch>>6);
+      StrBuf_appendChar(&RuleBuf, 0x80 | ch & 0x3f);
+    }
+    else StrBuf_appendChar(&RuleBuf, ch);
+    ch = getchar();
+  }
+  if (ch == EOF) return EOF; // last line
+  return 1;
+}
+
 void run() {
   size_t i, matchCap = 5;
   struct Trie *state = AcTrie;
   struct Match *matches = malloc(sizeof(struct Match) * matchCap);
   struct StringBuffer ms;
+  bool eof = false, outputFirstChar = false;
   ms.capacity = RuleBuf.capacity;
   ms.size = RuleBuf.size;
   ms.buf = calloc(ms.capacity, 1);
   memcpy(ms.buf, RuleBuf.buf, RuleBuf.size);
   while (1) {
     // show string
-    for (i = 0; i < ms.size; i++) {
+    /*for (i = 0; i < ms.size; i++) {
       if (isprint(ms.buf[i])) putchar(ms.buf[i]);
       else printf("\\x%.02x", (unsigned char)ms.buf[i]);
     }
-    puts("");
+    puts("");*/
     // find match
     size_t matchCount = 0;
     for (i = 0; i < ms.size; i++) {
@@ -405,23 +421,97 @@ void run() {
         t = t->dict;
       }
     }
-    if (matchCount == 0) {
-      break;
+    int ch;
+    if (ms.size > 0) { // can output char
+      ch = (unsigned char) ms.buf[0];
+      outputFirstChar = ch < 0x80 || ch >= 0xc2 && ch < 0xc4 || (ch == 0xc4 && ms.buf[1] == -127);
+    }
+    else outputFirstChar = false;
+    if (matchCount + outputFirstChar == 0) {
+      // input one char
+      if (eof) break;
+      int ch = getchar();
+      if (ch == EOF) { ch = SYMBOL_S; eof = true; }
+      size_t newsize = ms.size + (ch >= 0x80 ? 2 : 1);
+      if (newsize > ms.capacity) {
+        ms.capacity *= 2;
+        ms.buf = realloc(ms.buf, ms.capacity);
+      }
+      if (ch < 0x80) {
+        ms.buf[ms.size] = ch;
+      }
+      else {
+        ms.buf[ms.size] = 0xc0 | ch>>6;
+        ms.buf[ms.size+1] = 0x80 | ch&0x3f;
+      }
+      ms.size = newsize;
+      continue;
     }
     // rewrite string
-    size_t r = rand() % matchCount;
+    size_t r = rand() % (matchCount + outputFirstChar);
+    if (r == matchCount && outputFirstChar) {
+      // output first char
+      int pos;
+      if (ch == 0xc4 && ms.buf[1] == -127) { // \s
+        break; // stop program execution
+      }
+      if (ch >= 0xc2 && ch < 0xc4) { // 128~255
+        putchar((ch<<6) & 0xc0 | ms.buf[1] & 0x3f);
+        pos = 2;
+      }
+      else if (ch < 0x80) {
+        putchar(ch);
+        pos = 1;
+      }
+      memmove(ms.buf, ms.buf + pos, ms.size - pos);
+      ms.size -= pos;
+      continue;
+    }
     struct ThubiRule *tr = matches[r].rule;
     size_t pos = matches[r].pos;
-    if (ms.size + tr->rhslen - tr->lhslen > ms.capacity) {
+    size_t rhslen = tr->rhslen;
+    if (tr->mode == PrintRule) {
+      rhslen = 0;
+      if (tr->rhslen > 0) {
+        for (i = 0; i < tr->rhslen; i++) {
+          int ch = (unsigned char) tr->rhs[i];
+          if (ch >= 0xc2 && ch < 0xc4) { // 128~255
+            putchar((ch<<6) & 0xc0 | tr->rhs[i+1] & 0x3f);
+            i++;
+          }
+          else if (ch < 0x80) {
+            putchar(ch);
+          }
+        }
+      }
+      else puts("");
+    }
+    else if (tr->mode == InputRule) {
+      if (eof) {
+        rhslen = 0;
+      }
+      else {
+        eof = getUserInputLine() == EOF;
+        rhslen = RuleBuf.size;
+      }
+    }
+    if (ms.size + rhslen - tr->lhslen > ms.capacity) {
       ms.capacity *= 2;
       ms.buf = realloc(ms.buf, ms.capacity);
     }
-    if (tr->rhslen != tr->lhslen) {
-      memmove(ms.buf + pos + tr->rhslen - tr->lhslen, ms.buf + pos, ms.size - pos);
+    if (rhslen != tr->lhslen) {
+      memmove(ms.buf + pos + rhslen - tr->lhslen, ms.buf + pos, ms.size - pos);
     }
-    memcpy(ms.buf + pos - tr->lhslen, tr->rhs, tr->rhslen);
-    ms.size += tr->rhslen - tr->lhslen;
+    if (tr->mode == InputRule) {
+      memcpy(ms.buf + pos - tr->lhslen, RuleBuf.buf, rhslen);
+    }
+    else if (tr->mode == ReplaceRule) {
+      memcpy(ms.buf + pos - tr->lhslen, tr->rhs, rhslen);
+    }
+    ms.size += rhslen - tr->lhslen;
   }
+  free(matches);
+  StrBuf_destroy(&ms);
 }
 
 int main(int argc, char *argv[])
