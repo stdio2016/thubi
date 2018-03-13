@@ -20,6 +20,10 @@ To run Thubi program: (assume you are in top folder of this repo)
 bin/thubi [Thubi program file]
 ```
 
+Examples
+---
+Example Thubi programs are in `examples` folders.
+
 Notes
 ---
 1. The document didn't say if digits in hexadecimal escape character (`\xnn`) should be uppercase or lowercase. My implementation accepts both uppercase and lowercase hexadecimal digits.
