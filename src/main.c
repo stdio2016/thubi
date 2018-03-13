@@ -132,7 +132,7 @@ void addBuiltinSymbols(void) {
 }
 
 int parseLineEscape(int start) {
-  size_t i, symbolStart;
+  size_t i, symbolStart = 0;
   struct Trie *a = NULL;
   for (i = start; i < LineBufSize; i++) {
     unsigned ch;
@@ -364,7 +364,7 @@ int getUserInputLine() {
   while (ch != EOF && ch != '\n') {
     if (ch > 0x80) {
       StrBuf_appendChar(&RuleBuf, 0xc0 | ch>>6);
-      StrBuf_appendChar(&RuleBuf, 0x80 | ch & 0x3f);
+      StrBuf_appendChar(&RuleBuf, 0x80 | (ch & 0x3f));
     }
     else StrBuf_appendChar(&RuleBuf, ch);
     ch = getchar();
@@ -424,7 +424,7 @@ void run() {
     int ch;
     if (ms.size > 0) { // can output char
       ch = (unsigned char) ms.buf[0];
-      outputFirstChar = ch < 0x80 || ch >= 0xc2 && ch < 0xc4 || (ch == 0xc4 && ms.buf[1] == -127);
+      outputFirstChar = ch < 0x80 || (ch >= 0xc2 && ch < 0xc4) || (ch == 0xc4 && ms.buf[1] == -127);
     }
     else outputFirstChar = false;
     if (matchCount + outputFirstChar == 0) {
@@ -442,7 +442,7 @@ void run() {
       }
       else {
         ms.buf[ms.size] = 0xc0 | ch>>6;
-        ms.buf[ms.size+1] = 0x80 | ch&0x3f;
+        ms.buf[ms.size+1] = 0x80 | (ch&0x3f);
       }
       ms.size = newsize;
       continue;
@@ -451,12 +451,12 @@ void run() {
     size_t r = rand() % (matchCount + outputFirstChar);
     if (r == matchCount && outputFirstChar) {
       // output first char
-      int pos;
+      int pos = 0;
       if (ch == 0xc4 && ms.buf[1] == -127) { // \s
         break; // stop program execution
       }
       if (ch >= 0xc2 && ch < 0xc4) { // 128~255
-        putchar((ch<<6) & 0xc0 | ms.buf[1] & 0x3f);
+        putchar(((ch<<6) & 0xc0) | (ms.buf[1] & 0x3f));
         pos = 2;
       }
       else if (ch < 0x80) {
@@ -476,7 +476,7 @@ void run() {
         for (i = 0; i < tr->rhslen; i++) {
           int ch = (unsigned char) tr->rhs[i];
           if (ch >= 0xc2 && ch < 0xc4) { // 128~255
-            putchar((ch<<6) & 0xc0 | tr->rhs[i+1] & 0x3f);
+            putchar(((ch<<6) & 0xc0) | (tr->rhs[i+1] & 0x3f));
             i++;
           }
           else if (ch < 0x80) {
