@@ -11,7 +11,7 @@ Building
 
 Requirements:
 1. Make
-2. GCC (Clang, MinGW and Visual C++ are not tested)
+2. GCC (Clang and Visual C++ are not tested)
 
 To build Thubi interpretor, just type `make` in your favorite terminal, then you'll see `thubi` executable in `bin` folder.
 
