@@ -1,0 +1,7 @@
+\# This is a hello world example that doesn't use my extensions
+\# Lines starting with "\#" are actually programmer-defined symbols, not comments
+\# But "\#" line comments look really cool!
+:\b
+=
+
+Hello, world!\n
