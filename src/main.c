@@ -392,6 +392,7 @@ void run() {
     puts("");*/
     // find match
     size_t matchCount = 0;
+    state = AcTrie;
     for (i = 0; i < ms.size; i++) {
       char ch = ms.buf[i];
       struct Trie *t = Trie_advance(state, ch);
@@ -418,7 +419,7 @@ void run() {
           }
           td = td->dict;
         }
-        t = t->dict;
+        break;
       }
     }
     int ch;
