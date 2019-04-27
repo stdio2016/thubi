@@ -359,6 +359,7 @@ struct Match {
 };
 
 int getUserInputLine() {
+  fflush(stdout);
   int ch = getchar();
   StrBuf_clear(&RuleBuf);
   while (ch != EOF && ch != '\n') {
@@ -431,6 +432,7 @@ void run() {
     if (matchCount + outputFirstChar == 0) {
       // input one char
       if (eof) break;
+      fflush(stdout);
       int ch = getchar();
       if (ch == EOF) { ch = SYMBOL_S; eof = true; }
       size_t newsize = ms.size + (ch >= 0x80 ? 2 : 1);
