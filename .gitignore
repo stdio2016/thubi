@@ -1,3 +1,4 @@
 *.o
 thubi
 thubi.exe
+.DS_Store

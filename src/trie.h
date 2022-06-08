@@ -3,6 +3,7 @@
 #define TRIE_INCLUDED
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>
 
 struct Trie_internal;
 

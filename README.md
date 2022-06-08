@@ -11,13 +11,18 @@ Building
 
 Requirements:
 1. Make
-2. GCC (Clang and Visual C++ are not tested)
+2. GCC or Clang (Visual Studio is not tested)
 
 To build Thubi interpretor, just type `make` in your favorite terminal, then you'll see `thubi` executable in `bin` folder.
 
 To run Thubi program: (assume you are in top folder of this repo)
 ```
 bin/thubi [Thubi program file]
+```
+
+To run Thue program: (assume you are in top folder of this repo)
+```
+bin/thubi -thue [Thue program file]
 ```
 
 Examples

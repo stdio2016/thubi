@@ -296,6 +296,48 @@ void parseFile(FILE *f) {
   StrBuf_append(&RuleBuf, "\xc4\x81"); // \s
 }
 
+void parseThueFile(FILE *f) {
+  LineBuf = calloc(LineBufCap, 1);
+  if (LineBuf == NULL) OutOfMemory();
+  struct Trie *lhs;
+  int ended, state = 0;
+  StrBuf_clear(&RuleBuf);
+  do {
+    ended = getLine(f);
+    if (state == 0) {
+      if (LineBufSize == 0) {
+        // empty line
+        continue;
+      }
+      else {
+        char *where = strstr(LineBuf, "::=");
+        if (!where) {
+          continue;
+        }
+        if (LineBufSize == 3) {
+          state = 1;
+        }
+        else {
+          lhs = addRuleLhs(LineBuf, where - LineBuf);
+          if (where[3] == '~') {
+            addRuleRhs(lhs, where+4, LineBufSize - (where+4 - LineBuf), PrintRule);
+          }
+          else if (strcmp(where+3, ":::") == 0) {
+            addRuleRhs(lhs, NULL, 0, InputRule);
+          }
+          else {
+            addRuleRhs(lhs, where+3, LineBufSize - (where+3 - LineBuf), ReplaceRule);
+          }
+        }
+      }
+    }
+    else if (state == 1) {
+      StrBuf_append(&RuleBuf, LineBuf);
+    }
+  } while (ended != EOF) ;
+  free(LineBuf);
+}
+
 void buildAcAutomata() {
   // Trie->parent becomes fail pointer
   AcStates = malloc(sizeof(struct Trie *) * AcStateCount);
@@ -374,7 +416,7 @@ int getUserInputLine() {
   return 1;
 }
 
-void run() {
+void run(bool thueMode) {
   size_t i, matchCap = 5;
   struct Trie *state = AcTrie;
   struct Match *matches = malloc(sizeof(struct Match) * matchCap);
@@ -424,12 +466,14 @@ void run() {
       }
     }
     int ch;
-    if (ms.size > 0) { // can output char
+    if (!thueMode && ms.size > 0) { // can output char
       ch = (unsigned char) ms.buf[0];
       outputFirstChar = ch < 0x80 || (ch >= 0xc2 && ch < 0xc4) || (ch == 0xc4 && ms.buf[1] == -127);
     }
     else outputFirstChar = false;
     if (matchCount + outputFirstChar == 0) {
+      // Thue stops when no more rule can be applied
+      if (thueMode) break;
       // input one char
       if (eof) break;
       fflush(stdout);
@@ -520,13 +564,27 @@ void run() {
 int main(int argc, char *argv[])
 {
   FILE *f;
-  if (argc < 2) {
-    fprintf(stderr, "usage: %s [thubi program name]\n", argv[0]);
+  const char *filename = NULL;
+  bool thueMode = false;
+  int i;
+  for (i = 1; i < argc; i++) {
+    if (argv[i][0] == '-') {
+      if (strcmp(argv[i], "-thue") == 0) {
+        thueMode = true;
+      }
+    }
+    else {
+      filename = argv[i];
+      break;
+    }
+  }
+  if (filename == NULL) {
+    fprintf(stderr, "usage: %s [-thue] [thubi program name]\n", argv[0]);
     return 1;
   }
-  f = fopen(argv[1], "r");
+  f = fopen(filename, "r");
   if (f == NULL) {
-    fprintf(stderr, "unable to open file %s\n", argv[1]);
+    fprintf(stderr, "unable to open file %s\n", filename);
     return 1;
   }
   Symbols = Trie_create();
@@ -536,11 +594,15 @@ int main(int argc, char *argv[])
   AcStateCount++;
   addBuiltinSymbols();
   StrBuf_init(&RuleBuf);
-  parseFile(f);
+  if (thueMode) {
+    parseThueFile(f);
+  } else {
+    parseFile(f);
+  }
   fclose(f);
   buildAcAutomata();
   srand(time(NULL));
-  run();
+  run(thueMode);
   StrBuf_destroy(&RuleBuf);
   return 0;
 }
