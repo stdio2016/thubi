@@ -542,7 +542,7 @@ void run(bool thueMode) {
         rhslen = RuleBuf.size;
       }
     }
-    if (ms.size + rhslen - tr->lhslen > ms.capacity) {
+    while (ms.size + rhslen - tr->lhslen > ms.capacity) {
       ms.capacity *= 2;
       ms.buf = realloc(ms.buf, ms.capacity);
     }
